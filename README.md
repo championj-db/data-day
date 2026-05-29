@@ -70,7 +70,7 @@ The point of the lab is to configure a great **Genie** experience on this data.
 .
 ├── notebooks/00_setup_data_day.py     # the one notebook you run
 ├── data/                              # APRA superannuation tables as Parquet + data dictionary
-├── dashboard/super_data_day.lvdash.json  # the dashboard (the notebook also builds & publishes it)
+├── dashboard/super_data_day.lvdash.json  # the dashboard definition (the notebook publishes this file)
 └── README.md
 ```
 

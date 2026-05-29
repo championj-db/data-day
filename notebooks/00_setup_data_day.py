@@ -339,196 +339,22 @@ except Exception as e:
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ## 8 · Create & publish the AI/BI dashboard
-# MAGIC Builds the **APRA Super Data Day** dashboard (Fund Risk & Allocation + Industry Trends) and
-# MAGIC publishes it against your serverless SQL warehouse. Re-running updates the same dashboard.
+# MAGIC Reads the committed `dashboard/super_data_day.lvdash.json` and publishes it against your
+# MAGIC serverless SQL warehouse. Re-running updates the same dashboard (no duplicates).
 
 # COMMAND ----------
 
-import hashlib
 import json
 from databricks.sdk import WorkspaceClient
 
-# Regulatory blue/teal palette
-BLUE, TEAL, GREEN, AMBER, RED, SLATE = "#1B3A5C", "#00838F", "#059669", "#F59E0B", "#DC2626", "#64748B"
-SEG = [BLUE, TEAL, GREEN, AMBER, SLATE]
-
-
-def build_dashboard(fq: str) -> dict:
-    """Returns the serialized AI/BI dashboard. Reads ONLY v_super_illiquidity_peer and
-    super_performance, so it renders regardless of metric-view runtime support."""
-    def uid(name):
-        return hashlib.md5(name.encode()).hexdigest()[:8]
-
-    datasets, layout1, layout2 = [], [], []
-
-    def ds(key, display, sql):
-        datasets.append({"name": uid(key), "displayName": display, "queryLines": [sql]})
-        return uid(key)
-
-    def text(key, md, pos):
-        return {"widget": {"name": uid(key), "textbox_spec": md}, "position": pos}
-
-    def counter(key, dsid, field, title, pos):
-        return {"widget": {"name": uid(key), "queries": [{"name": "main_query", "query": {
-            "datasetName": dsid, "fields": [{"name": field, "expression": f"SUM(`{field}`)"}],
-            "disaggregated": True}}],
-            "spec": {"version": 2, "widgetType": "counter",
-                     "encodings": {"value": {"fieldName": field, "displayName": title}},
-                     "frame": {"showTitle": True, "title": title}}}, "position": pos}
-
-    def bar(key, dsid, xf, yf, title, pos, xname, yname, colors=None):
-        return {"widget": {"name": uid(key), "queries": [{"name": "main_query", "query": {
-            "datasetName": dsid, "fields": [{"name": xf, "expression": f"`{xf}`"},
-                       {"name": yf, "expression": f"SUM(`{yf}`)"}], "disaggregated": False}}],
-            "spec": {"version": 3, "widgetType": "bar",
-                     "encodings": {"x": {"fieldName": xf, "scale": {"type": "categorical", "sort": {"by": "y-reversed"}}, "displayName": xname},
-                                   "y": {"fieldName": yf, "scale": {"type": "quantitative"}, "displayName": yname},
-                                   "label": {"show": True}},
-                     "frame": {"showTitle": True, "title": title}, "mark": {"colors": colors or SEG}}}, "position": pos}
-
-    def pie(key, dsid, angle, cat, title, pos):
-        return {"widget": {"name": uid(key), "queries": [{"name": "main_query", "query": {
-            "datasetName": dsid, "fields": [{"name": angle, "expression": f"SUM(`{angle}`)"},
-                       {"name": cat, "expression": f"`{cat}`"}], "disaggregated": False}}],
-            "spec": {"version": 3, "widgetType": "pie",
-                     "encodings": {"angle": {"fieldName": angle, "scale": {"type": "quantitative"}, "displayName": title},
-                                   "color": {"fieldName": cat, "scale": {"type": "categorical"}, "displayName": cat}},
-                     "frame": {"showTitle": True, "title": title}, "mark": {"colors": SEG}}}, "position": pos}
-
-    def scatter(key, dsid, xf, yf, cf, title, pos, xname, yname):
-        return {"widget": {"name": uid(key), "queries": [{"name": "main_query", "query": {
-            "datasetName": dsid, "fields": [{"name": xf, "expression": f"`{xf}`"},
-                       {"name": yf, "expression": f"`{yf}`"}, {"name": cf, "expression": f"`{cf}`"}],
-            "disaggregated": True}}],
-            "spec": {"version": 3, "widgetType": "scatter",
-                     "encodings": {"x": {"fieldName": xf, "scale": {"type": "quantitative"}, "displayName": xname},
-                                   "y": {"fieldName": yf, "scale": {"type": "quantitative"}, "displayName": yname},
-                                   "color": {"fieldName": cf, "scale": {"type": "categorical"}, "displayName": "Classification"}},
-                     "frame": {"showTitle": True, "title": title}, "mark": {"colors": SEG}}}, "position": pos}
-
-    def line(key, dsid, xf, yf, title, pos, xname, yname):
-        return {"widget": {"name": uid(key), "queries": [{"name": "main_query", "query": {
-            "datasetName": dsid, "fields": [{"name": xf, "expression": f"`{xf}`"}, {"name": yf, "expression": f"`{yf}`"}],
-            "disaggregated": True}}],
-            "spec": {"version": 3, "widgetType": "line",
-                     "encodings": {"x": {"fieldName": xf, "scale": {"type": "temporal"}, "displayName": xname},
-                                   "y": {"fieldName": yf, "scale": {"type": "quantitative"}, "displayName": yname}},
-                     "frame": {"showTitle": True, "title": title}, "mark": {"colors": [BLUE]}}}, "position": pos}
-
-    def area(key, dsid, xf, yf, cf, title, pos, xname, yname):
-        return {"widget": {"name": uid(key), "queries": [{"name": "main_query", "query": {
-            "datasetName": dsid, "fields": [{"name": xf, "expression": f"`{xf}`"}, {"name": yf, "expression": f"`{yf}`"},
-                       {"name": cf, "expression": f"`{cf}`"}], "disaggregated": True}}],
-            "spec": {"version": 3, "widgetType": "area",
-                     "encodings": {"x": {"fieldName": xf, "scale": {"type": "temporal"}, "displayName": xname},
-                                   "y": {"fieldName": yf, "scale": {"type": "quantitative"}, "displayName": yname},
-                                   "color": {"fieldName": cf, "scale": {"type": "categorical"}, "displayName": "Asset class"}},
-                     "frame": {"showTitle": True, "title": title},
-                     "mark": {"colors": [BLUE, TEAL, GREEN, AMBER, RED, SLATE, "#7C3AED"]}}}, "position": pos}
-
-    def table(key, dsid, cols, title, pos):
-        fields = [{"name": c[0], "expression": f"`{c[0]}`"} for c in cols]
-        colenc = []
-        for i, c in enumerate(cols):
-            e = {"fieldName": c[0], "type": c[1], "displayAs": ("number" if c[1] == "float" else "string"),
-                 "title": c[2], "displayName": c[2], "order": 100000 + i}
-            if len(c) > 3 and c[3]:
-                e["numberFormat"] = c[3]
-            if c[1] == "float":
-                e["alignContent"] = "right"
-            colenc.append(e)
-        return {"widget": {"name": uid(key), "queries": [{"name": "main_query", "query": {
-            "datasetName": dsid, "fields": fields, "disaggregated": True}}],
-            "spec": {"version": 2, "widgetType": "table", "encodings": {"columns": colenc},
-                     "frame": {"showTitle": True, "title": title}}}, "position": pos}
-
-    V = f"{fq}.v_super_illiquidity_peer"
-    P = f"{fq}.super_performance"
-
-    d_summary = ds("summary", "Super Summary",
-        f"SELECT COUNT(DISTINCT fund_name) AS fund_count, ROUND(SUM(total_fund_investments_m)/1000,1) AS total_inv_bn, "
-        f"ROUND(AVG(illiquid_pct),1) AS avg_illiquid_pct FROM {V}")
-    d_class = ds("byclass", "Allocation by Classification",
-        f"SELECT rse_regulatory_classification AS classification, "
-        f"ROUND(AVG(equity_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_equity_pct, "
-        f"ROUND(AVG(illiquid_pct),1) AS avg_illiquid_pct, "
-        f"ROUND(AVG(fixed_income_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_fi_pct, "
-        f"ROUND(AVG(cash_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_cash_pct "
-        f"FROM {V} GROUP BY rse_regulatory_classification")
-    d_profit = ds("byprofit", "AUM by Profit Status",
-        f"SELECT rse_licensee_profit_status AS profit_status, ROUND(SUM(total_fund_investments_m)/1000,1) AS total_inv_bn "
-        f"FROM {V} WHERE rse_licensee_profit_status IS NOT NULL GROUP BY rse_licensee_profit_status")
-    d_scatter = ds("scatter", "Illiquidity vs Size",
-        f"SELECT fund_name, rse_regulatory_classification AS classification, ROUND(illiquid_pct,1) AS illiquid_pct, "
-        f"ROUND(total_fund_investments_m,0) AS total_investments_m FROM {V} WHERE total_fund_investments_m>0")
-    d_top = ds("topfunds", "Top Illiquid Funds",
-        f"SELECT fund_name, rse_regulatory_classification AS classification, ROUND(illiquid_pct,1) AS illiquid_pct, "
-        f"ROUND(segment_avg_illiquid_pct,1) AS peer_avg_pct, ROUND(vs_peer_avg_pp,1) AS vs_peer_pp, "
-        f"ROUND(total_fund_investments_m,0) AS total_m, peer_comparison FROM {V} ORDER BY illiquid_pct DESC LIMIT 15")
-    d_total = ds("totalaum", "Total Industry Investments",
-        f"SELECT try_to_date(quarter,'MMM yyyy') AS quarter_date, ROUND(SUM(value_m)/1000,0) AS total_bn "
-        f"FROM {P} WHERE asset_class='Total investments' AND value_m>10 "
-        f"AND try_to_date(quarter,'MMM yyyy') IS NOT NULL GROUP BY 1 ORDER BY 1")
-    d_mix = ds("allocmix", "Asset Allocation Mix Over Time",
-        f"SELECT try_to_date(quarter,'MMM yyyy') AS quarter_date, asset_class, ROUND(SUM(value_m)/1000,1) AS value_bn "
-        f"FROM {P} WHERE asset_class IN ('Cash','Fixed income','Equity','Property','Infrastructure','Other','Commodities') "
-        f"AND value_m>10 AND try_to_date(quarter,'MMM yyyy') IS NOT NULL GROUP BY 1,2 ORDER BY 1")
-
-    layout1 += [
-        text("p1head",
-             "# APRA Superannuation Fund Risk & Allocation\n"
-             "Fund-level asset allocation and illiquid-asset exposure for APRA-regulated superannuation funds, "
-             "compared against peer averages by regulatory classification. Data: APRA Quarterly Superannuation "
-             "Fund Statistics (Dec 2025). *Built for Data Day on Databricks Free Edition.*",
-             {"x": 0, "y": 0, "width": 6, "height": 2}),
-        counter("c_funds", d_summary, "fund_count", "Super Funds", {"x": 0, "y": 2, "width": 2, "height": 2}),
-        counter("c_aum", d_summary, "total_inv_bn", "Total Investments ($B)", {"x": 2, "y": 2, "width": 2, "height": 2}),
-        counter("c_illiq", d_summary, "avg_illiquid_pct", "Avg Illiquid (%)", {"x": 4, "y": 2, "width": 2, "height": 2}),
-        bar("b_equity", d_class, "classification", "avg_equity_pct", "Avg Equity Allocation by Classification (%)",
-            {"x": 0, "y": 4, "width": 3, "height": 5}, "Classification", "Avg Equity %"),
-        bar("b_illiq", d_class, "classification", "avg_illiquid_pct", "Avg Illiquid Exposure by Classification (%)",
-            {"x": 3, "y": 4, "width": 3, "height": 5}, "Classification", "Avg Illiquid %", colors=[RED, AMBER, GREEN, TEAL, BLUE]),
-        scatter("s_size", d_scatter, "total_investments_m", "illiquid_pct", "classification",
-                "Illiquid Exposure vs Fund Size", {"x": 0, "y": 9, "width": 3, "height": 6},
-                "Total Investments ($M)", "Illiquid %"),
-        pie("pie_profit", d_profit, "total_inv_bn", "profit_status", "AUM by Profit Status ($B)",
-            {"x": 3, "y": 9, "width": 3, "height": 6}),
-        bar("b_fi", d_class, "classification", "avg_fi_pct", "Avg Fixed Income Allocation by Classification (%)",
-            {"x": 0, "y": 15, "width": 3, "height": 5}, "Classification", "Avg Fixed Income %", colors=[TEAL, GREEN, BLUE, AMBER, SLATE]),
-        bar("b_cash", d_class, "classification", "avg_cash_pct", "Avg Cash Allocation by Classification (%)",
-            {"x": 3, "y": 15, "width": 3, "height": 5}, "Classification", "Avg Cash %", colors=[GREEN, TEAL, BLUE, AMBER, SLATE]),
-        table("t_top", d_top, [
-            ("fund_name", "string", "Fund"),
-            ("classification", "string", "Classification"),
-            ("illiquid_pct", "float", "Illiquid %", "0.0"),
-            ("peer_avg_pct", "float", "Peer Avg %", "0.0"),
-            ("vs_peer_pp", "float", "vs Peer (pp)", "+0.0;-0.0"),
-            ("total_m", "float", "Total ($M)", "#,##0"),
-            ("peer_comparison", "string", "Status"),
-        ], "Funds with Highest Illiquid Asset Exposure vs Peers", {"x": 0, "y": 20, "width": 6, "height": 6}),
-    ]
-    layout2 += [
-        text("p2head",
-             "## Industry Asset Allocation Trends\n"
-             "Total superannuation industry investments and the asset-class mix over time. "
-             "Data: APRA Quarterly Superannuation Performance Statistics (Table 1d, industry asset allocation).",
-             {"x": 0, "y": 0, "width": 6, "height": 2}),
-        line("l_total", d_total, "quarter_date", "total_bn", "Total Industry Superannuation Investments Over Time ($B)",
-             {"x": 0, "y": 2, "width": 6, "height": 6}, "Quarter", "Total Investments ($B)"),
-        area("a_mix", d_mix, "quarter_date", "value_bn", "asset_class", "Asset Allocation Mix Over Time ($B)",
-             {"x": 0, "y": 8, "width": 6, "height": 7}, "Quarter", "Allocation ($B)"),
-    ]
-    return {
-        "datasets": datasets,
-        "pages": [
-            {"name": uid("page_super"), "displayName": "Fund Risk & Allocation",
-             "pageType": "PAGE_TYPE_CANVAS", "layout": layout1},
-            {"name": uid("page_trends"), "displayName": "Industry Trends",
-             "pageType": "PAGE_TYPE_CANVAS", "layout": layout2},
-        ],
-        "uiSettings": {"theme": {"widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"}, "applyModeEnabled": False},
-    }
-
+# Load the dashboard definition committed in the repo (dashboard/super_data_day.lvdash.json).
+DASH_FILE = os.path.join(os.path.dirname(DATA_DIR), "dashboard", "super_data_day.lvdash.json")
+with open(DASH_FILE) as f:
+    serialized = f.read()
+# The committed dashboard targets `workspace.data_day`; adapt only if this workspace differs.
+if FQ != "workspace.data_day":
+    serialized = serialized.replace("workspace.data_day", FQ)
+print(f"Loaded dashboard definition from {DASH_FILE}")
 
 w = WorkspaceClient()
 
@@ -539,8 +365,6 @@ if not warehouses:
     raise RuntimeError("No SQL warehouse found. Open SQL → SQL Warehouses and start one, then re-run this cell.")
 warehouse_id = (serverless or warehouses)[0].id
 print(f"Using warehouse: {(serverless or warehouses)[0].name} ({warehouse_id})")
-
-serialized = json.dumps(build_dashboard(FQ))
 
 # Idempotent: update the dashboard if it already exists, else create it.
 existing = None
