@@ -72,8 +72,6 @@ print(f"Using {FQ}")
 import pandas as pd
 from pyspark.sql.functions import col
 
-spark.conf.set("spark.sql.execution.arrow.pyspark.enabled", "true")
-
 # table -> columns that should be typed as DATE (stored as text in Parquet)
 DATE_COLS = {
     "super_fund_membership": ["period"],
