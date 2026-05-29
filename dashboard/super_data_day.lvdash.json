@@ -1,0 +1,893 @@
+{
+  "datasets": [
+    {
+      "name": "a80da128",
+      "displayName": "Super Summary",
+      "queryLines": [
+        "SELECT COUNT(DISTINCT fund_name) AS fund_count, ROUND(SUM(total_fund_investments_m)/1000,1) AS total_inv_bn, ROUND(AVG(illiquid_pct),1) AS avg_illiquid_pct FROM workspace.data_day.v_super_illiquidity_peer"
+      ]
+    },
+    {
+      "name": "90531b17",
+      "displayName": "Allocation by Classification",
+      "queryLines": [
+        "SELECT rse_regulatory_classification AS classification, ROUND(AVG(equity_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_equity_pct, ROUND(AVG(illiquid_pct),1) AS avg_illiquid_pct, ROUND(AVG(fixed_income_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_fi_pct, ROUND(AVG(cash_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_cash_pct FROM workspace.data_day.v_super_illiquidity_peer GROUP BY rse_regulatory_classification"
+      ]
+    },
+    {
+      "name": "3444a7e6",
+      "displayName": "AUM by Profit Status",
+      "queryLines": [
+        "SELECT rse_licensee_profit_status AS profit_status, ROUND(SUM(total_fund_investments_m)/1000,1) AS total_inv_bn FROM workspace.data_day.v_super_illiquidity_peer WHERE rse_licensee_profit_status IS NOT NULL GROUP BY rse_licensee_profit_status"
+      ]
+    },
+    {
+      "name": "50894a23",
+      "displayName": "Illiquidity vs Size",
+      "queryLines": [
+        "SELECT fund_name, rse_regulatory_classification AS classification, ROUND(illiquid_pct,1) AS illiquid_pct, ROUND(total_fund_investments_m,0) AS total_investments_m FROM workspace.data_day.v_super_illiquidity_peer WHERE total_fund_investments_m>0"
+      ]
+    },
+    {
+      "name": "662a52ec",
+      "displayName": "Top Illiquid Funds",
+      "queryLines": [
+        "SELECT fund_name, rse_regulatory_classification AS classification, ROUND(illiquid_pct,1) AS illiquid_pct, ROUND(segment_avg_illiquid_pct,1) AS peer_avg_pct, ROUND(vs_peer_avg_pp,1) AS vs_peer_pp, ROUND(total_fund_investments_m,0) AS total_m, peer_comparison FROM workspace.data_day.v_super_illiquidity_peer ORDER BY illiquid_pct DESC LIMIT 15"
+      ]
+    },
+    {
+      "name": "6fc569ee",
+      "displayName": "Total Industry Investments",
+      "queryLines": [
+        "SELECT try_to_date(quarter,'MMM yyyy') AS quarter_date, ROUND(SUM(value_m)/1000,0) AS total_bn FROM workspace.data_day.super_performance WHERE asset_class='Total investments' AND value_m>10 AND try_to_date(quarter,'MMM yyyy') IS NOT NULL GROUP BY 1 ORDER BY 1"
+      ]
+    },
+    {
+      "name": "26c0e70f",
+      "displayName": "Asset Allocation Mix Over Time",
+      "queryLines": [
+        "SELECT try_to_date(quarter,'MMM yyyy') AS quarter_date, asset_class, ROUND(SUM(value_m)/1000,1) AS value_bn FROM workspace.data_day.super_performance WHERE asset_class IN ('Cash','Fixed income','Equity','Property','Infrastructure','Other','Commodities') AND value_m>10 AND try_to_date(quarter,'MMM yyyy') IS NOT NULL GROUP BY 1,2 ORDER BY 1"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "3f1d483c",
+      "displayName": "Fund Risk & Allocation",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "fd1f149b",
+            "textbox_spec": "# APRA Superannuation Fund Risk & Allocation\nFund-level asset allocation and illiquid-asset exposure for APRA-regulated superannuation funds, compared against peer averages by regulatory classification. Data: APRA Quarterly Superannuation Fund Statistics (Dec 2025). *Built for Data Day on Databricks Free Edition.*"
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "31271f4f",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "a80da128",
+                  "fields": [
+                    {
+                      "name": "fund_count",
+                      "expression": "SUM(`fund_count`)"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "fund_count",
+                  "displayName": "Super Funds"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Super Funds"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "78396697",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "a80da128",
+                  "fields": [
+                    {
+                      "name": "total_inv_bn",
+                      "expression": "SUM(`total_inv_bn`)"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "total_inv_bn",
+                  "displayName": "Total Investments ($B)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total Investments ($B)"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "fe1711b5",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "a80da128",
+                  "fields": [
+                    {
+                      "name": "avg_illiquid_pct",
+                      "expression": "SUM(`avg_illiquid_pct`)"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg_illiquid_pct",
+                  "displayName": "Avg Illiquid (%)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Illiquid (%)"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 2,
+            "width": 2,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ee2093dc",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "90531b17",
+                  "fields": [
+                    {
+                      "name": "classification",
+                      "expression": "`classification`"
+                    },
+                    {
+                      "name": "avg_equity_pct",
+                      "expression": "SUM(`avg_equity_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "classification",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  },
+                  "displayName": "Classification"
+                },
+                "y": {
+                  "fieldName": "avg_equity_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Avg Equity %"
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Equity Allocation by Classification (%)"
+              },
+              "mark": {
+                "colors": [
+                  "#1B3A5C",
+                  "#00838F",
+                  "#059669",
+                  "#F59E0B",
+                  "#64748B"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "04c97487",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "90531b17",
+                  "fields": [
+                    {
+                      "name": "classification",
+                      "expression": "`classification`"
+                    },
+                    {
+                      "name": "avg_illiquid_pct",
+                      "expression": "SUM(`avg_illiquid_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "classification",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  },
+                  "displayName": "Classification"
+                },
+                "y": {
+                  "fieldName": "avg_illiquid_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Avg Illiquid %"
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Illiquid Exposure by Classification (%)"
+              },
+              "mark": {
+                "colors": [
+                  "#DC2626",
+                  "#F59E0B",
+                  "#059669",
+                  "#00838F",
+                  "#1B3A5C"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 4,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "9f1e1513",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "50894a23",
+                  "fields": [
+                    {
+                      "name": "total_investments_m",
+                      "expression": "`total_investments_m`"
+                    },
+                    {
+                      "name": "illiquid_pct",
+                      "expression": "`illiquid_pct`"
+                    },
+                    {
+                      "name": "classification",
+                      "expression": "`classification`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "scatter",
+              "encodings": {
+                "x": {
+                  "fieldName": "total_investments_m",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Total Investments ($M)"
+                },
+                "y": {
+                  "fieldName": "illiquid_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Illiquid %"
+                },
+                "color": {
+                  "fieldName": "classification",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Classification"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Illiquid Exposure vs Fund Size"
+              },
+              "mark": {
+                "colors": [
+                  "#1B3A5C",
+                  "#00838F",
+                  "#059669",
+                  "#F59E0B",
+                  "#64748B"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 9,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "2ec69de4",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "3444a7e6",
+                  "fields": [
+                    {
+                      "name": "total_inv_bn",
+                      "expression": "SUM(`total_inv_bn`)"
+                    },
+                    {
+                      "name": "profit_status",
+                      "expression": "`profit_status`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "pie",
+              "encodings": {
+                "angle": {
+                  "fieldName": "total_inv_bn",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "AUM by Profit Status ($B)"
+                },
+                "color": {
+                  "fieldName": "profit_status",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "profit_status"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "AUM by Profit Status ($B)"
+              },
+              "mark": {
+                "colors": [
+                  "#1B3A5C",
+                  "#00838F",
+                  "#059669",
+                  "#F59E0B",
+                  "#64748B"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 9,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "f11599d4",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "90531b17",
+                  "fields": [
+                    {
+                      "name": "classification",
+                      "expression": "`classification`"
+                    },
+                    {
+                      "name": "avg_fi_pct",
+                      "expression": "SUM(`avg_fi_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "classification",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  },
+                  "displayName": "Classification"
+                },
+                "y": {
+                  "fieldName": "avg_fi_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Avg Fixed Income %"
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Fixed Income Allocation by Classification (%)"
+              },
+              "mark": {
+                "colors": [
+                  "#00838F",
+                  "#059669",
+                  "#1B3A5C",
+                  "#F59E0B",
+                  "#64748B"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 15,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "177612b2",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "90531b17",
+                  "fields": [
+                    {
+                      "name": "classification",
+                      "expression": "`classification`"
+                    },
+                    {
+                      "name": "avg_cash_pct",
+                      "expression": "SUM(`avg_cash_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "classification",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  },
+                  "displayName": "Classification"
+                },
+                "y": {
+                  "fieldName": "avg_cash_pct",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Avg Cash %"
+                },
+                "label": {
+                  "show": true
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Cash Allocation by Classification (%)"
+              },
+              "mark": {
+                "colors": [
+                  "#059669",
+                  "#00838F",
+                  "#1B3A5C",
+                  "#F59E0B",
+                  "#64748B"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 15,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "d3e37cae",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "662a52ec",
+                  "fields": [
+                    {
+                      "name": "fund_name",
+                      "expression": "`fund_name`"
+                    },
+                    {
+                      "name": "classification",
+                      "expression": "`classification`"
+                    },
+                    {
+                      "name": "illiquid_pct",
+                      "expression": "`illiquid_pct`"
+                    },
+                    {
+                      "name": "peer_avg_pct",
+                      "expression": "`peer_avg_pct`"
+                    },
+                    {
+                      "name": "vs_peer_pp",
+                      "expression": "`vs_peer_pp`"
+                    },
+                    {
+                      "name": "total_m",
+                      "expression": "`total_m`"
+                    },
+                    {
+                      "name": "peer_comparison",
+                      "expression": "`peer_comparison`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "fund_name",
+                    "type": "string",
+                    "displayAs": "string",
+                    "title": "Fund",
+                    "displayName": "Fund",
+                    "order": 100000
+                  },
+                  {
+                    "fieldName": "classification",
+                    "type": "string",
+                    "displayAs": "string",
+                    "title": "Classification",
+                    "displayName": "Classification",
+                    "order": 100001
+                  },
+                  {
+                    "fieldName": "illiquid_pct",
+                    "type": "float",
+                    "displayAs": "number",
+                    "title": "Illiquid %",
+                    "displayName": "Illiquid %",
+                    "order": 100002,
+                    "numberFormat": "0.0",
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "peer_avg_pct",
+                    "type": "float",
+                    "displayAs": "number",
+                    "title": "Peer Avg %",
+                    "displayName": "Peer Avg %",
+                    "order": 100003,
+                    "numberFormat": "0.0",
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "vs_peer_pp",
+                    "type": "float",
+                    "displayAs": "number",
+                    "title": "vs Peer (pp)",
+                    "displayName": "vs Peer (pp)",
+                    "order": 100004,
+                    "numberFormat": "+0.0;-0.0",
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "total_m",
+                    "type": "float",
+                    "displayAs": "number",
+                    "title": "Total ($M)",
+                    "displayName": "Total ($M)",
+                    "order": 100005,
+                    "numberFormat": "#,##0",
+                    "alignContent": "right"
+                  },
+                  {
+                    "fieldName": "peer_comparison",
+                    "type": "string",
+                    "displayAs": "string",
+                    "title": "Status",
+                    "displayName": "Status",
+                    "order": 100006
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Funds with Highest Illiquid Asset Exposure vs Peers"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 20,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ]
+    },
+    {
+      "name": "778a20aa",
+      "displayName": "Industry Trends",
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layout": [
+        {
+          "widget": {
+            "name": "e445d1b4",
+            "textbox_spec": "## Industry Asset Allocation Trends\nTotal superannuation industry investments and the asset-class mix over time. Data: APRA Quarterly Superannuation Performance Statistics (Table 1d, industry asset allocation)."
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "1c4d7fb8",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6fc569ee",
+                  "fields": [
+                    {
+                      "name": "quarter_date",
+                      "expression": "`quarter_date`"
+                    },
+                    {
+                      "name": "total_bn",
+                      "expression": "`total_bn`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "quarter_date",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Quarter"
+                },
+                "y": {
+                  "fieldName": "total_bn",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Total Investments ($B)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Total Industry Superannuation Investments Over Time ($B)"
+              },
+              "mark": {
+                "colors": [
+                  "#1B3A5C"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "5c41edd6",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "26c0e70f",
+                  "fields": [
+                    {
+                      "name": "quarter_date",
+                      "expression": "`quarter_date`"
+                    },
+                    {
+                      "name": "value_bn",
+                      "expression": "`value_bn`"
+                    },
+                    {
+                      "name": "asset_class",
+                      "expression": "`asset_class`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "area",
+              "encodings": {
+                "x": {
+                  "fieldName": "quarter_date",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Quarter"
+                },
+                "y": {
+                  "fieldName": "value_bn",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Allocation ($B)"
+                },
+                "color": {
+                  "fieldName": "asset_class",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Asset class"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Asset Allocation Mix Over Time ($B)"
+              },
+              "mark": {
+                "colors": [
+                  "#1B3A5C",
+                  "#00838F",
+                  "#059669",
+                  "#F59E0B",
+                  "#DC2626",
+                  "#64748B",
+                  "#7C3AED"
+                ]
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 7
+          }
+        }
+      ]
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
+}
