@@ -8,7 +8,7 @@
 # MAGIC 1. Creates the schema **`workspace.data_day`**
 # MAGIC 2. Loads 3 APRA superannuation tables from the bundled Parquet files in `../data/`
 # MAGIC 3. Adds table + column descriptions (great for Genie)
-# MAGIC 4. Creates the metric view **`mv_super_fund_allocation`** and the analytical view **`v_super_illiquidity_peer`**
+# MAGIC 4. Creates the metric view **`mv_super_fund_allocation`** (the governed semantic layer for Genie)
 # MAGIC 5. Creates & publishes the **APRA Super Data Day** AI/BI dashboard
 # MAGIC
 # MAGIC **Your exercise afterwards:** build and configure a **Genie space** on `workspace.data_day`.
@@ -168,8 +168,7 @@ print("Descriptions applied.")
 # MAGIC %md
 # MAGIC ## 5 · Metric view `mv_super_fund_allocation`
 # MAGIC A Unity Catalog **metric view** — governed, reusable measures (illiquid %, allocation %, AUM)
-# MAGIC that Genie and dashboards can query with `MEASURE(...)`. Requires a recent serverless runtime;
-# MAGIC if unavailable, the cell falls back to a plain view exposing the same per-fund calculations.
+# MAGIC that Genie can query with `MEASURE(...)`. Metric views are GA on current Databricks serverless.
 
 # COMMAND ----------
 
@@ -236,85 +235,13 @@ METRIC_VIEW_YAML = f"""
       expr: ROUND(SUM(COALESCE(private_debt_m, 0)) / 1000, 1)
 """
 
-try:
-    spark.sql(f"""CREATE OR REPLACE VIEW {FQ}.mv_super_fund_allocation
+spark.sql(f"""CREATE OR REPLACE VIEW {FQ}.mv_super_fund_allocation
 WITH METRICS LANGUAGE YAML AS $${METRIC_VIEW_YAML}$$""")
-    print("✓ Metric view created. Try: SELECT `Classification`, MEASURE(`Avg Illiquid Pct`) "
-          f"FROM {FQ}.mv_super_fund_allocation GROUP BY ALL")
-except Exception as e:
-    print(f"⚠ Metric view not supported on this runtime ({str(e)[:120]}...). Creating a plain fallback view instead.")
-    spark.sql(f"""CREATE OR REPLACE VIEW {FQ}.mv_super_fund_allocation AS
-        SELECT fund_name, CAST(abn AS STRING) AS abn, rse_regulatory_classification AS classification,
-               fund_type, rse_licensee_profit_status AS profit_status, period,
-               total_fund_investments_m,
-               ROUND(equity_m / NULLIF(total_fund_investments_m,0) * 100, 1) AS equity_pct,
-               ROUND(fixed_income_m / NULLIF(total_fund_investments_m,0) * 100, 1) AS fixed_income_pct,
-               ROUND(cash_m / NULLIF(total_fund_investments_m,0) * 100, 1) AS cash_pct,
-               ROUND((COALESCE(au_unlisted_property_m,0)+COALESCE(intl_unlisted_property_m,0)+
-                      COALESCE(au_unlisted_infrastructure_m,0)+COALESCE(intl_unlisted_infrastructure_m,0)+
-                      COALESCE(alternatives_m,0)+COALESCE(private_debt_m,0))
-                     / NULLIF(total_fund_investments_m,0) * 100, 1) AS illiquid_pct
-        FROM {FQ}.super_fund_asset_allocation WHERE total_fund_investments_m > 0""")
-    spark.sql(f"COMMENT ON TABLE {FQ}.mv_super_fund_allocation IS "
-              f"'Per-fund super allocation percentages (fallback plain view — metric view unsupported on this runtime).'")
-    print("✓ Fallback view created.")
+print("✓ Metric view created. Try: SELECT `Classification`, MEASURE(`Avg Illiquid Pct`) "
+      f"FROM {FQ}.mv_super_fund_allocation GROUP BY ALL")
 
 # COMMAND ----------
-# MAGIC %md
-# MAGIC ## 6 · Analytical view `v_super_illiquidity_peer`
-# MAGIC Fund illiquid-asset % with peer-segment averages. Powers the dashboard and answers the
-# MAGIC question: *"Which funds have the highest illiquid exposure vs peers?"*
-
-# COMMAND ----------
-
-spark.sql(f"""
-CREATE OR REPLACE VIEW {FQ}.v_super_illiquidity_peer AS
-WITH fund_illiquid AS (
-    SELECT
-        fund_name, abn, rse_regulatory_classification, fund_type, rse_membership_base,
-        rse_licensee, rse_licensee_profit_status, period,
-        cash_m, fixed_income_m, equity_m, property_m, infrastructure_m, alternatives_m,
-        private_debt_m, total_fund_investments_m,
-        COALESCE(au_unlisted_property_m, 0) + COALESCE(intl_unlisted_property_m, 0) +
-        COALESCE(au_unlisted_infrastructure_m, 0) + COALESCE(intl_unlisted_infrastructure_m, 0) +
-        COALESCE(alternatives_m, 0) + COALESCE(private_debt_m, 0) AS illiquid_assets_m,
-        CASE WHEN total_fund_investments_m > 0 THEN
-            (COALESCE(au_unlisted_property_m, 0) + COALESCE(intl_unlisted_property_m, 0) +
-             COALESCE(au_unlisted_infrastructure_m, 0) + COALESCE(intl_unlisted_infrastructure_m, 0) +
-             COALESCE(alternatives_m, 0) + COALESCE(private_debt_m, 0))
-            / total_fund_investments_m * 100
-        ELSE NULL END AS illiquid_pct
-    FROM {FQ}.super_fund_asset_allocation
-    WHERE total_fund_investments_m > 0
-),
-segment_avg AS (
-    SELECT rse_regulatory_classification,
-        COUNT(*) AS funds_in_segment,
-        AVG(illiquid_pct) AS segment_avg_illiquid_pct,
-        STDDEV(illiquid_pct) AS segment_stddev_illiquid_pct,
-        PERCENTILE(illiquid_pct, 0.5) AS segment_median_illiquid_pct
-    FROM fund_illiquid GROUP BY rse_regulatory_classification
-)
-SELECT f.*,
-    s.funds_in_segment, s.segment_avg_illiquid_pct, s.segment_stddev_illiquid_pct,
-    s.segment_median_illiquid_pct,
-    f.illiquid_pct - s.segment_avg_illiquid_pct AS vs_peer_avg_pp,
-    CASE
-        WHEN f.illiquid_pct > s.segment_avg_illiquid_pct + s.segment_stddev_illiquid_pct THEN 'Above average'
-        WHEN f.illiquid_pct < s.segment_avg_illiquid_pct - s.segment_stddev_illiquid_pct THEN 'Below average'
-        ELSE 'Within range'
-    END AS peer_comparison
-FROM fund_illiquid f
-JOIN segment_avg s ON f.rse_regulatory_classification = s.rse_regulatory_classification
-""")
-spark.sql(f"COMMENT ON TABLE {FQ}.v_super_illiquidity_peer IS "
-          f"'Fund-level illiquid asset exposure (% of portfolio) with peer-segment averages. "
-          f"Illiquid = unlisted property + unlisted infrastructure + alternatives + private debt. "
-          f"Source: APRA Quarterly Superannuation Fund Statistics Table 4.'")
-print("✓ Analytical view created.")
-
-# COMMAND ----------
-# MAGIC %md ## 7 · Verify
+# MAGIC %md ## 6 · Verify
 
 # COMMAND ----------
 
@@ -322,23 +249,15 @@ print("Row counts:")
 for t in ["super_fund_membership", "super_fund_asset_allocation", "super_performance"]:
     print(f"  {t}: {spark.table(f'{FQ}.{t}').count()}")
 
-print("\nTop 5 funds by illiquid exposure vs peers:")
+print("\nMetric view — allocation by classification:")
 display(spark.sql(f"""
-    SELECT fund_name, rse_regulatory_classification AS classification,
-           ROUND(illiquid_pct,1) AS illiquid_pct, ROUND(segment_avg_illiquid_pct,1) AS peer_avg_pct
-    FROM {FQ}.v_super_illiquidity_peer ORDER BY illiquid_pct DESC LIMIT 5"""))
-
-# Metric view sanity check (works only if the metric view form was created)
-try:
-    display(spark.sql(f"""
-        SELECT `Classification`, MEASURE(`Fund Count`) AS funds, MEASURE(`Avg Illiquid Pct`) AS avg_illiquid
-        FROM {FQ}.mv_super_fund_allocation GROUP BY ALL"""))
-except Exception as e:
-    print(f"(Metric-view MEASURE() query skipped — fallback view in use: {str(e)[:80]})")
+    SELECT `Classification`, MEASURE(`Fund Count`) AS funds,
+           MEASURE(`Avg Equity Pct`) AS avg_equity, MEASURE(`Avg Illiquid Pct`) AS avg_illiquid
+    FROM {FQ}.mv_super_fund_allocation GROUP BY ALL"""))
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## 8 · Create & publish the AI/BI dashboard
+# MAGIC ## 7 · Create & publish the AI/BI dashboard
 # MAGIC Reads the committed `dashboard/super_data_day.lvdash.json` and publishes it against your
 # MAGIC serverless SQL warehouse. Re-running updates the same dashboard (no duplicates).
 
@@ -398,7 +317,10 @@ print(f"  Draft:     {host}/sql/dashboardsv3/{dash_id}")
 # MAGIC ## ✅ Done — now build your Genie space
 # MAGIC
 # MAGIC You now have, in **`workspace.data_day`**:
-# MAGIC - 3 described tables · 1 metric view (`mv_super_fund_allocation`) · 1 analytical view (`v_super_illiquidity_peer`) · a published dashboard.
+# MAGIC - 3 described tables · 1 metric view (`mv_super_fund_allocation`) · a published dashboard.
+# MAGIC
+# MAGIC *Optional:* run `sql/v_super_illiquidity_peer.sql` to add a per-fund illiquid-vs-peers view — a
+# MAGIC handy extra asset when you build your Genie space.
 # MAGIC
 # MAGIC **Your turn:** Go to **Genie → New**, scope it to the `workspace.data_day` schema, and try:
 # MAGIC - *"Which funds have the highest illiquid asset exposure compared with their peers?"*
