@@ -4,35 +4,35 @@
       "name": "a80da128",
       "displayName": "Super Summary",
       "queryLines": [
-        "SELECT COUNT(DISTINCT fund_name) AS fund_count, ROUND(SUM(total_fund_investments_m)/1000,1) AS total_inv_bn, ROUND(AVG(illiquid_pct),1) AS avg_illiquid_pct FROM workspace.data_day.v_super_illiquidity_peer"
+        "SELECT COUNT(DISTINCT fund_name) AS fund_count, ROUND(SUM(total_fund_investments_m)/1000,1) AS total_inv_bn, ROUND(AVG((COALESCE(au_unlisted_property_m,0)+COALESCE(intl_unlisted_property_m,0)+COALESCE(au_unlisted_infrastructure_m,0)+COALESCE(intl_unlisted_infrastructure_m,0)+COALESCE(alternatives_m,0)+COALESCE(private_debt_m,0))/NULLIF(total_fund_investments_m,0)*100),1) AS avg_illiquid_pct FROM workspace.data_day.super_fund_asset_allocation WHERE total_fund_investments_m>0"
       ]
     },
     {
       "name": "90531b17",
       "displayName": "Allocation by Classification",
       "queryLines": [
-        "SELECT rse_regulatory_classification AS classification, ROUND(AVG(equity_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_equity_pct, ROUND(AVG(illiquid_pct),1) AS avg_illiquid_pct, ROUND(AVG(fixed_income_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_fi_pct, ROUND(AVG(cash_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_cash_pct FROM workspace.data_day.v_super_illiquidity_peer GROUP BY rse_regulatory_classification"
+        "SELECT rse_regulatory_classification AS classification, ROUND(AVG(equity_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_equity_pct, ROUND(AVG((COALESCE(au_unlisted_property_m,0)+COALESCE(intl_unlisted_property_m,0)+COALESCE(au_unlisted_infrastructure_m,0)+COALESCE(intl_unlisted_infrastructure_m,0)+COALESCE(alternatives_m,0)+COALESCE(private_debt_m,0))/NULLIF(total_fund_investments_m,0)*100),1) AS avg_illiquid_pct, ROUND(AVG(fixed_income_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_fi_pct, ROUND(AVG(cash_m/NULLIF(total_fund_investments_m,0)*100),1) AS avg_cash_pct FROM workspace.data_day.super_fund_asset_allocation WHERE total_fund_investments_m>0 GROUP BY rse_regulatory_classification"
       ]
     },
     {
       "name": "3444a7e6",
       "displayName": "AUM by Profit Status",
       "queryLines": [
-        "SELECT rse_licensee_profit_status AS profit_status, ROUND(SUM(total_fund_investments_m)/1000,1) AS total_inv_bn FROM workspace.data_day.v_super_illiquidity_peer WHERE rse_licensee_profit_status IS NOT NULL GROUP BY rse_licensee_profit_status"
+        "SELECT rse_licensee_profit_status AS profit_status, ROUND(SUM(total_fund_investments_m)/1000,1) AS total_inv_bn FROM workspace.data_day.super_fund_asset_allocation WHERE total_fund_investments_m>0 AND rse_licensee_profit_status IS NOT NULL GROUP BY rse_licensee_profit_status"
       ]
     },
     {
       "name": "50894a23",
       "displayName": "Illiquidity vs Size",
       "queryLines": [
-        "SELECT fund_name, rse_regulatory_classification AS classification, ROUND(illiquid_pct,1) AS illiquid_pct, ROUND(total_fund_investments_m,0) AS total_investments_m FROM workspace.data_day.v_super_illiquidity_peer WHERE total_fund_investments_m>0"
+        "SELECT fund_name, rse_regulatory_classification AS classification, ROUND((COALESCE(au_unlisted_property_m,0)+COALESCE(intl_unlisted_property_m,0)+COALESCE(au_unlisted_infrastructure_m,0)+COALESCE(intl_unlisted_infrastructure_m,0)+COALESCE(alternatives_m,0)+COALESCE(private_debt_m,0))/NULLIF(total_fund_investments_m,0)*100,1) AS illiquid_pct, ROUND(total_fund_investments_m,0) AS total_investments_m FROM workspace.data_day.super_fund_asset_allocation WHERE total_fund_investments_m>0"
       ]
     },
     {
       "name": "662a52ec",
       "displayName": "Top Illiquid Funds",
       "queryLines": [
-        "SELECT fund_name, rse_regulatory_classification AS classification, ROUND(illiquid_pct,1) AS illiquid_pct, ROUND(segment_avg_illiquid_pct,1) AS peer_avg_pct, ROUND(vs_peer_avg_pp,1) AS vs_peer_pp, ROUND(total_fund_investments_m,0) AS total_m, peer_comparison FROM workspace.data_day.v_super_illiquidity_peer ORDER BY illiquid_pct DESC LIMIT 15"
+        "WITH f AS (SELECT fund_name, rse_regulatory_classification AS classification, total_fund_investments_m, (COALESCE(au_unlisted_property_m,0)+COALESCE(intl_unlisted_property_m,0)+COALESCE(au_unlisted_infrastructure_m,0)+COALESCE(intl_unlisted_infrastructure_m,0)+COALESCE(alternatives_m,0)+COALESCE(private_debt_m,0))/NULLIF(total_fund_investments_m,0)*100 AS illiquid_pct FROM workspace.data_day.super_fund_asset_allocation WHERE total_fund_investments_m>0), s AS (SELECT classification, AVG(illiquid_pct) AS peer_avg, STDDEV(illiquid_pct) AS peer_sd FROM f GROUP BY classification) SELECT f.fund_name, f.classification, ROUND(f.illiquid_pct,1) AS illiquid_pct, ROUND(s.peer_avg,1) AS peer_avg_pct, ROUND(f.illiquid_pct - s.peer_avg,1) AS vs_peer_pp, ROUND(f.total_fund_investments_m,0) AS total_m, CASE WHEN f.illiquid_pct > s.peer_avg + s.peer_sd THEN 'Above average' WHEN f.illiquid_pct < s.peer_avg - s.peer_sd THEN 'Below average' ELSE 'Within range' END AS peer_comparison FROM f JOIN s ON f.classification = s.classification ORDER BY f.illiquid_pct DESC LIMIT 15"
       ]
     },
     {
