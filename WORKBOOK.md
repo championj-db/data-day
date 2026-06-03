@@ -11,10 +11,11 @@
 - Step 6 — Your first question (agent mode)
 - Step 7 — The warm-up questions
 - Step 8 — Make Genie smarter (curation)
-  - 8a — Add a space description
-  - 8b — Add general instructions
-  - 8c — Add four example queries (the "trusted assets")
-  - 8d — Add five sample questions (the welcome mat)
+  - 8a — Fill the gaps in your column descriptions (Unity Catalog)
+  - 8b — Add a space description
+  - 8c — Add general instructions
+  - 8d — Add four example queries (the "trusted assets")
+  - 8e — Add five sample questions (the welcome mat)
 - Step 9 — The before-and-after moment
 - Step 10 — The three "wow" questions (agent mode)
   - Aha #1 — find the unusual funds
@@ -42,7 +43,7 @@ Everything you saw in the demo, you are about to build with your own hands. This
 **What you will learn:**
 
 - How to sign up for the free Databricks platform
-- How to load a governed dataset by cloning a Git folder and running one notebook
+- How to load a repo using Git Folders in Workspace
 - How to read an AI/BI dashboard built on that data
 - How to create a Genie space and ask it questions in plain English
 - How a few minutes of "curation" makes Genie noticeably smarter
@@ -75,11 +76,11 @@ Instead of downloading and uploading a file, you'll clone a small Git repository
 | 4 | Leave the Git provider as GitHub and the branch as `main` |
 | 5 | **Click Create Git folder** |
 
-After a few seconds you'll see a `data-day` folder in your workspace with `notebooks/`, `data/`, `dashboard/` and `sql/` inside it. That `data/` folder holds the APRA superannuation tables (as Parquet files) — no spreadsheets to wrangle.
+After a few seconds you'll see a `data-day` folder in your workspace with `notebooks/`, `data/`, `dashboard/` and `sql/` inside it. That `data/` folder holds the APRA superannuation tables (pre-prepared as Parquet files) from the original spreadsheets.
 
 ## Step 3 — Run the install notebook
 
-This one notebook builds everything the lab needs. It replaces the old "upload a CSV" step entirely.
+This one notebook builds everything the lab needs.
 
 | **Step** | **What to do** |
 | :-- | :-- |
@@ -99,18 +100,7 @@ This one notebook builds everything the lab needs. It replaces the old "upload a
 | `mv_super_fund_allocation` | metric view | Governed measures: allocation %, illiquid %, total AUM |
 | **APRA Super Data Day** | dashboard | Fund Risk & Allocation + Industry Trends |
 
-It also wrote rich **descriptions** onto every table and key column. That matters — Genie reads those descriptions as context later.
-
-**Verify it worked (optional, 30 seconds).** Open a SQL editor or a new notebook cell and check:
-
-- `workspace.data_day` exists with **3 tables** (≈ 74 / 74 / 1,837 rows).
-- This returns rows (it proves the metric view is live):
-
-  ```sql
-  SELECT `Classification`, MEASURE(`Avg Illiquid Pct`)
-  FROM workspace.data_day.mv_super_fund_allocation
-  GROUP BY ALL;
-  ```
+It also wrote **descriptions** onto every table and key column. Genie reads those descriptions as context later.
 
 ## Step 4 — Start on the dashboard
 
@@ -189,9 +179,25 @@ Try these one at a time. Just type each question into the chat box and press Ent
 
 ## Step 8 — Make Genie smarter (curation)
 
-This is where the demo becomes interesting. We are going to teach Genie a few things, in four short steps. Each step takes a minute or two.
+This is where the demo becomes interesting. We are going to teach Genie a few things, in five short steps. Each step takes a minute or two.
 
-### 8a — Add a space description
+### 8a — Fill the gaps in your column descriptions (Unity Catalog)
+
+The install notebook described the tables and the most important columns — but several columns (especially the detailed asset-allocation breakdowns) are still blank. Genie leans on these column descriptions for context: the more columns that carry a clear comment, the more accurately it picks the right field. Unity Catalog can **draft these descriptions for you with AI** — you just review and accept.
+
+| **Step** | **What to do** |
+| :-- | :-- |
+| 1 | **In the left sidebar, click Catalog, then open `workspace` → `data_day`** |
+| 2 | **Click the `super_fund_asset_allocation` table and go to the Columns tab** |
+| 3 | **Spot any columns with an empty Comment. Click the AI generate button (often shown as ✨ "AI suggest")** — Unity Catalog proposes a plain-English description for the missing columns |
+| 4 | **Review each suggestion, tidy anything that isn't quite right, then Accept / Save** |
+| 5 | **Repeat for `super_fund_membership` and `super_performance`** (and add a table-level comment anywhere one is missing) |
+
+**Why it matters:** these comments live in Unity Catalog, so *every* tool — Genie, dashboards, notebooks, search — sees them. A column called `intl_unlisted_infrastructure_m` means little until a comment says *"International unlisted (illiquid) infrastructure, $M AUD."* Spend two minutes here and every later answer gets sharper.
+
+> Treat the AI suggestions as a **draft** — read them before accepting. For the string-typed columns in `super_fund_membership`, make sure the comment notes they can contain text markers (ranges or suppressed values). If the AI button isn't available, you can always type a description by hand. When you're done, return to your Genie space — it picks up the improved column context the next time you open it.
+
+### 8b — Add a space description
 
 | **Step** | **What to do** |
 | :-- | :-- |
@@ -201,7 +207,7 @@ This is where the demo becomes interesting. We are going to teach Genie a few th
 
 > APRA-regulated superannuation fund data for prudential analysis. 74 funds (December 2025) with membership profiles and fund-level asset allocation in $M AUD, plus industry-wide quarterly asset allocation from December 2004 to December 2025. Use this space to ask plain-English questions about asset allocation, illiquid-asset exposure and peer comparisons, fund risk profiles, and long-run industry trends. Source: public APRA Quarterly Superannuation Statistics.
 
-### 8b — Add general instructions
+### 8c — Add general instructions
 
 This is where you teach Genie the domain language and the quirks of the data — the things that would otherwise trip it up.
 
@@ -254,7 +260,7 @@ MONETARY VALUES & FORMATTING
 - When ranking outlier funds, sort by total assets (largest first).
 ```
 
-### 8c — Add four example queries (the "trusted assets")
+### 8d — Add four example queries (the "trusted assets")
 
 Genie learns by example. We are going to give it four canonical query patterns. Once these are saved, whenever someone asks one of these kinds of questions, Genie reuses the trusted pattern — and the answer carries the "Trusted" badge.
 
@@ -385,7 +391,7 @@ GROUP BY ALL
 ORDER BY avg_illiquid_pct DESC
 ```
 
-### 8d — Add five sample questions (the welcome mat)
+### 8e — Add five sample questions (the welcome mat)
 
 These appear when someone opens your space for the first time. They tell new visitors "here is what this space is good at."
 
